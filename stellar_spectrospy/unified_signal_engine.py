@@ -153,6 +153,13 @@ class SpectralStateEstimator:
         self._ml_model = None
         self._mode_resolved: Optional[str] = None   # 'nmr' or 'stellar'
         self._object_name: Optional[str] = None
+        # CWT results (populated by transform_cwt)
+        self._cwt_matrix: Optional[np.ndarray] = None   # shape (n_scales, n_points)
+        self._cwt_scales: Optional[np.ndarray] = None
+        self._cwt_freqs_aa: Optional[np.ndarray] = None  # 1/Å pseudo-frequencies
+        # Periodogram peaks (stellar mode – used for RC / harmonic analysis)
+        self._pgram_peaks: Optional[np.ndarray] = None
+        self._pgram_peak_freqs: Optional[np.ndarray] = None
 
     # ------------------------------------------------------------------
     # 1. Input layer
@@ -433,6 +440,148 @@ class SpectralStateEstimator:
         self._periodogram_freqs = period_freq[pos]
         self._periodogram_power = period_fft[pos]
 
+        # Detect periodogram peaks (used for RC / harmonic families in stellar mode)
+        self._detect_periodogram_peaks()
+
+    # ------------------------------------------------------------------
+    # 3b. Continuous Wavelet Transform (CWT) — stellar mode
+    # ------------------------------------------------------------------
+
+    def transform_cwt(
+        self,
+        n_scales: int = 64,
+        min_scale: float = 2.0,
+        max_scale: float = 300.0,
+        wavelet_w: float = 6.0,
+    ) -> "SpectralStateEstimator":
+        """
+        Compute a Continuous Wavelet Transform (CWT) using the Morlet wavelet.
+
+        Unlike the FFT which decomposes a signal into pure sinusoids of global
+        frequency, CWT produces a 2-D time-frequency (here wavelength-scale)
+        map.  This reveals *where* in the spectrum a given feature width
+        (scale) is concentrated — useful for localising broad molecular bands
+        vs narrow atomic lines.
+
+        Parameters
+        ----------
+        n_scales : int
+            Number of scale steps (frequency resolution).
+        min_scale / max_scale : float
+            Scale range in Angstroms (feature width range to examine).
+        wavelet_w : float
+            Morlet central frequency parameter (higher w = more frequency
+            resolution, less time localisation).
+
+        Stores
+        ------
+        _cwt_matrix       : 2-D power array  (n_scales × n_points)
+        _cwt_scales       : scale values (Å)
+        _cwt_freqs_aa     : pseudo-frequencies (1/Å) for each scale
+        """
+        sig = self._processed if self._processed is not None else self._raw_signal
+        if sig is None:
+            raise RuntimeError("Load and preprocess a spectrum before CWT.")
+
+        flux = np.asarray(sig, dtype=float)
+
+        # Uniformly resample onto even λ grid (required for meaningful scales)
+        wl_uniform = np.linspace(self._raw_x[0], self._raw_x[-1], len(flux))
+        flux_uniform = np.interp(wl_uniform, self._raw_x, flux)
+        d_lambda = wl_uniform[1] - wl_uniform[0]  # Å per sample
+
+        # Detrend: remove 3rd-order polynomial baseline
+        flux_detrended = flux_uniform - np.polyval(
+            np.polyfit(wl_uniform, flux_uniform, 3), wl_uniform
+        )
+
+        # Scales in sample units (convert Å → samples)
+        scales_aa = np.geomspace(min_scale, max_scale, n_scales)
+        scales_samp = scales_aa / d_lambda
+
+        # Pure-numpy Morlet CWT via FFT convolution
+        # (replaces scipy.signal.cwt which was removed in scipy >=1.12)
+        coef = self._morlet_cwt_fft(flux_detrended, scales_samp, w=wavelet_w)
+        power = np.abs(coef) ** 2  # (n_scales, n_points)
+
+        self._cwt_matrix   = power
+        self._cwt_scales   = scales_aa
+        self._cwt_freqs_aa = 1.0 / scales_aa  # pseudo-frequency (1/Å)
+
+        # Store x-axis for plotting
+        self._cwt_wl_uniform = wl_uniform
+
+        print(f"[CWT]  scales={n_scales}  lam-range=[{min_scale:.0f}, {max_scale:.0f}] Ang  "
+              f"pseudo-freq=[{1/max_scale:.4f}, {1/min_scale:.4f}] 1/Ang")
+        return self
+
+    @staticmethod
+    def _morlet_cwt_fft(
+        signal: np.ndarray,
+        scales: np.ndarray,
+        w: float = 6.0,
+    ) -> np.ndarray:
+        """
+        Compute a CWT with the real Morlet wavelet using FFT convolution.
+
+        This is a pure-numpy implementation that works with any scipy version.
+
+        Parameters
+        ----------
+        signal : 1-D float array
+        scales : array of scale values (in sample units)
+        w      : Morlet central frequency parameter
+
+        Returns
+        -------
+        coef : complex array of shape (len(scales), len(signal))
+        """
+        from numpy.fft import fft, ifft, fftfreq
+        n = len(signal)
+        sig_fft = fft(signal, n=n)
+        freqs   = fftfreq(n)                     # cycles/sample, range [-0.5, 0.5)
+
+        coef = np.zeros((len(scales), n), dtype=complex)
+        norm = np.pi ** (-0.25)                  # Morlet normalisation
+
+        for i, s in enumerate(scales):
+            # Frequency-domain Morlet: hat{psi}(f*s) = norm * sqrt(2pi*s)
+            #   * exp(-0.5*(2*pi*s*f - w)^2)
+            arg = 2.0 * np.pi * s * freqs - w
+            psi_hat = norm * np.sqrt(2 * np.pi * s) * np.exp(-0.5 * arg ** 2)
+            coef[i] = ifft(sig_fft * psi_hat, n=n)
+
+        return coef
+
+    def _detect_periodogram_peaks(
+        self,
+        height_frac: float = 0.05,
+        prominence_frac: float = 0.02,
+    ) -> None:
+        """
+        Find peaks in the wavelength-oscillation periodogram.
+
+        These represent recurring absorption-line spacings in the spectrum
+        and are the physically correct domain for RC scoring in stellar mode.
+        Called automatically at the end of _transform_stellar().
+        """
+        if not hasattr(self, '_periodogram_power') or self._periodogram_power is None:
+            return
+        power = self._periodogram_power
+        max_p = power.max()
+        if max_p == 0:
+            self._pgram_peaks = np.array([], dtype=int)
+            self._pgram_peak_freqs = np.array([])
+            return
+        peaks, _ = find_peaks(
+            power,
+            height=height_frac * max_p,
+            prominence=prominence_frac * max_p,
+            distance=3,
+        )
+        self._pgram_peaks = peaks
+        self._pgram_peak_freqs = self._periodogram_freqs[peaks] if len(peaks) else np.array([])
+
     # ------------------------------------------------------------------
     # 4. Peak / eigenmode detection
     # ------------------------------------------------------------------
@@ -539,43 +688,75 @@ class SpectralStateEstimator:
         sigma: float = 1.0,
     ) -> float:
         """
-        Compute the Resonance Coherence (RC) score across all detected peaks.
+        Compute the Resonance Coherence (RC) score across detected peaks.
 
         Definition
         ----------
         RC = Σ_{i≠j} Σ_{p=1}^{max_p} Σ_{q=1}^{max_q}
-              exp( -|f_i - (p/q) * f_j| / sigma )
+              exp( -|f_i - (p/q) * f_j| / σ_eff )
 
-        A high RC score indicates that peak frequencies are near small-integer
-        harmonic ratios — characteristic of:
-          • Stellar p-mode / g-mode eigenfrequency families
-          • NMR J-coupling multiplets
-          • Planetary orbital resonance analogies
+        For stellar mode the RC is computed on wavelength-periodogram peaks
+        (1/Å units, period of recurring absorption spacings) rather than raw
+        optical frequencies (10^14 Hz).  This is physically correct because:
+          - Optical frequencies of absorption lines do NOT form harmonic ratios
+            (they reflect discrete quantum transitions, not oscillation modes)
+          - Recurring SPACINGS between absorption lines DO form harmonic series
+            in stars with eigenmode excitation (p-modes, g-modes)
+          - σ is auto-scaled to the median peak frequency so the Gaussian
+            kernel width is ~5% of the typical spacing — prevents RC≡0
+
+        For NMR mode the original Hz-domain peaks are used (J-coupling multiplets
+        DO form harmonic ratios in the direct frequency space).
 
         Parameters
         ----------
         max_p, max_q : int
             Upper limit on numerator/denominator integers.
         sigma : float
-            Sensitivity scale (same units as frequencies).
+            Sensitivity scale as a *fraction of the median peak frequency*.
+            Default 1.0 means 100% — use 0.05 for 5% window (recommended
+            for periodogram peaks where adjacent harmonics are close).
 
         Returns
         -------
         float : RC score (non-negative; larger = more harmonic structure)
         """
-        if self._peaks is None or len(self._peaks) < 2:
+        # ── Choose which peak set to score ───────────────────────────────────
+        if self._mode_resolved == "stellar":
+            # Use periodogram peaks (1/Å) — these represent eigenmode spacings
+            if self._pgram_peak_freqs is not None and len(self._pgram_peak_freqs) >= 2:
+                freqs = np.abs(self._pgram_peak_freqs)
+            elif self._peaks is not None and len(self._peaks) >= 2:
+                # Fallback: use absorption-line optical frequencies but
+                # normalise so RC is scale-invariant
+                freqs = np.abs(self._fft_freqs[self._peaks])
+                freqs = freqs[freqs > 0]
+            else:
+                self._metrics["coherence_score"] = 0.0
+                return 0.0
+        else:
+            if self._peaks is None or len(self._peaks) < 2:
+                return 0.0
+            freqs = np.abs(self._fft_freqs[self._peaks])
+            freqs = np.abs(freqs[freqs != 0])
+
+        if len(freqs) < 2:
+            self._metrics["coherence_score"] = 0.0
             return 0.0
 
-        freqs = self._fft_freqs[self._peaks]
-        # Work with positive frequencies only
-        freqs = np.abs(freqs[freqs != 0])
-        if len(freqs) < 2:
-            return 0.0
+        # ── Auto-scale sigma ─────────────────────────────────────────────────
+        freq_median = float(np.median(freqs))
+        if freq_median == 0:
+            sigma_eff = max(sigma, 1e-30)
+        else:
+            sigma_eff = sigma * freq_median   # sigma is now a fraction
+        # For NMR keep old behaviour (sigma=1.0 Hz reasonable)
+        if self._mode_resolved == "nmr" and sigma == 1.0:
+            sigma_eff = 1.0
 
         p_vals = np.arange(1, max_p + 1)
         q_vals = np.arange(1, max_q + 1)
-        ratios = (p_vals[:, None] / q_vals[None, :]).ravel()    # all p/q combos
-        # Remove duplicates (e.g. 2/4 == 1/2)
+        ratios = (p_vals[:, None] / q_vals[None, :]).ravel()
         ratios = np.unique(np.round(ratios, 8))
 
         rc = 0.0
@@ -584,9 +765,8 @@ class SpectralStateEstimator:
                 if i == j:
                     continue
                 for r in ratios:
-                    rc += np.exp(-abs(fi - r * fj) / max(sigma, 1e-30))
+                    rc += np.exp(-abs(fi - r * fj) / sigma_eff)
 
-        # Normalise to number of pair combinations
         n_pairs = len(freqs) * (len(freqs) - 1)
         rc_norm = rc / max(n_pairs * len(ratios), 1)
         self._metrics["coherence_score"] = float(rc_norm)
@@ -674,16 +854,21 @@ class SpectralStateEstimator:
         """
         Group detected peaks into harmonic series.
 
-        Method: for each peak as potential fundamental, check if other
-        peaks are within *base_tolerance* of integer multiples.
+        For stellar mode this searches for harmonics in the wavelength
+        periodogram peaks (recurring absorption-line spacings in 1/Å).
+        For NMR mode it searches in the direct-frequency FFT peaks.
 
         Returns list of groups:  [[f0, 2f0, 3f0, ...], ...]
         """
-        if self._peaks is None or len(self._peaks) == 0:
+        # Choose the peak set for harmonic search
+        if self._mode_resolved == "stellar" and self._pgram_peak_freqs is not None and len(self._pgram_peak_freqs) >= 2:
+            raw_freqs = np.abs(self._pgram_peak_freqs)
+        elif self._peaks is not None and len(self._peaks) > 0:
+            raw_freqs = np.abs(self._fft_freqs[self._peaks])
+        else:
             return []
 
-        freqs = sorted(np.abs(self._fft_freqs[self._peaks]))
-        freqs = [f for f in freqs if f > 0]
+        freqs = sorted(f for f in raw_freqs if f > 0)
         used  = set()
         families = []
 
@@ -850,6 +1035,120 @@ class SpectralStateEstimator:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def compare_transforms(
+        self,
+        figsize: Tuple[int, int] = (16, 10),
+        show: bool = True,
+    ) -> plt.Figure:
+        """
+        Side-by-side FFT vs CWT comparison plot.
+
+        Requires transform() and transform_cwt() to have been run.
+        """
+        name = self._object_name or "Spectrum"
+        has_fft = self._fft_freqs is not None
+        has_cwt = self._cwt_matrix is not None
+
+        if not has_fft:
+            raise RuntimeError("Run transform() (FFT) first.")
+
+        nrows = 2 if has_cwt else 1
+        fig, axes = plt.subplots(nrows, 2, figsize=figsize)
+        axs = axes.ravel() if has_cwt else axes
+
+        # ── Top-left: FFT periodogram (1/Å domain)
+        ax0 = axs[0] if has_cwt else axes[0]
+        if hasattr(self, '_periodogram_freqs') and self._periodogram_freqs is not None:
+            ax0.semilogy(self._periodogram_freqs, self._periodogram_power,
+                        linewidth=0.9, color="steelblue")
+            if self._pgram_peaks is not None and len(self._pgram_peaks):
+                ax0.semilogy(
+                    self._pgram_peak_freqs,
+                    self._periodogram_power[self._pgram_peaks],
+                    "x", ms=8, mew=2, color="crimson",
+                    label=f"{len(self._pgram_peaks)} periodogram peaks"
+                )
+                ax0.legend(fontsize=9)
+            ax0.set_xlabel("Spatial Frequency (1/Å)", fontsize=11)
+            ax0.set_ylabel("Periodogram Power", fontsize=11)
+            ax0.set_title(
+                f"FFT Periodogram — {name}\n"
+                "Shows recurring absorption-line spacing patterns",
+                fontsize=11, fontweight="bold"
+            )
+            rc_val = self._metrics.get("coherence_score")
+            if rc_val is not None:
+                ax0.text(0.97, 0.95, f"RC = {rc_val:.5f}",
+                        ha="right", va="top", transform=ax0.transAxes,
+                        fontsize=10, color="crimson",
+                        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="crimson", alpha=0.8))
+        else:
+            ax0.text(0.5, 0.5, "No periodogram data — run transform() first",
+                    ha="center", va="center", transform=ax0.transAxes)
+
+        # ── Top-right: Flux(ν) optical frequency
+        ax1 = axs[1] if has_cwt else axes[1]
+        ax1.plot(self._fft_freqs, self._fft_mag, linewidth=0.7, color="mediumpurple")
+        if self._peaks is not None and len(self._peaks):
+            ax1.plot(self._fft_freqs[self._peaks], self._fft_mag[self._peaks],
+                    "x", ms=8, mew=2, color="crimson",
+                    label=f"{len(self._peaks)} absorption peaks")
+            ax1.legend(fontsize=9)
+        ax1.set_xlabel("Optical Frequency ν (Hz)", fontsize=11)
+        ax1.set_ylabel("Flux(ν)  (erg s⁻¹ cm⁻² Hz⁻¹)", fontsize=11)
+        ax1.set_title(
+            f"Optical Frequency Spectrum — {name}\n"
+            "Each dip = absorption line quantum transition",
+            fontsize=11, fontweight="bold"
+        )
+
+        if has_cwt:
+            # ── Bottom-left: CWT power map
+            ax2 = axs[2]
+            extent = [
+                self._cwt_wl_uniform[0], self._cwt_wl_uniform[-1],
+                self._cwt_freqs_aa[-1], self._cwt_freqs_aa[0],
+            ]
+            im = ax2.imshow(
+                self._cwt_matrix,
+                aspect="auto",
+                extent=extent,
+                origin="upper",
+                cmap="inferno",
+                interpolation="bilinear",
+            )
+            plt.colorbar(im, ax=ax2, label="CWT Power", pad=0.01)
+            ax2.set_xlabel("Wavelength (Å)", fontsize=11)
+            ax2.set_ylabel("Pseudo-frequency (1/Å)", fontsize=11)
+            ax2.set_title(
+                f"CWT Power Map (Morlet) — {name}\n"
+                "Bright = strong feature at that wavelength & scale",
+                fontsize=11, fontweight="bold"
+            )
+
+            # ── Bottom-right: CWT ridge (dominant scale per wavelength)
+            ax3 = axs[3]
+            dominant_scale_idx = np.argmax(self._cwt_matrix, axis=0)
+            dominant_freq = self._cwt_freqs_aa[dominant_scale_idx]
+            ax3.plot(self._cwt_wl_uniform, dominant_freq,
+                    linewidth=0.8, color="darkorange")
+            ax3.set_xlabel("Wavelength (Å)", fontsize=11)
+            ax3.set_ylabel("Dominant Feature Scale (1/Å)", fontsize=11)
+            ax3.set_title(
+                f"CWT Ridge — {name}\n"
+                "Dominant feature width at each wavelength position",
+                fontsize=11, fontweight="bold"
+            )
+
+        plt.suptitle(
+            f"Transform Comparison: FFT vs CWT — {name}",
+            fontsize=13, fontweight="bold"
+        )
+        plt.tight_layout()
+        if show:
+            plt.show()
+        return fig
 
     @property
     def metrics(self) -> Dict[str, Any]:

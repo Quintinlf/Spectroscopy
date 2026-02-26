@@ -222,7 +222,7 @@ class SpectralDatabase:
 
     def query_by_constellation(self, constellation: str) -> List[Dict[str, Any]]:
         """
-        Return all stored metric records for a given constellation.
+        Return the most-recent metric record per star for a given constellation.
 
         Returns a list of dicts merging stars + most-recent spectral_metrics.
         """
@@ -235,21 +235,33 @@ class SpectralDatabase:
                    m.energy_per_peak, m.harmonic_families,
                    m.analysis_notes, m.timestamp
             FROM stars s
-            LEFT JOIN spectral_metrics m ON s.id = m.star_id
+            LEFT JOIN (
+                SELECT star_id, MAX(timestamp) AS max_ts
+                FROM spectral_metrics
+                GROUP BY star_id
+            ) latest ON latest.star_id = s.id
+            LEFT JOIN spectral_metrics m
+                ON m.star_id = s.id AND m.timestamp = latest.max_ts
             WHERE LOWER(s.constellation) = LOWER(?)
-            ORDER BY s.object_name, m.timestamp DESC
+            ORDER BY s.vmag
         """, (constellation,)).fetchall()
         return [dict(r) for r in rows]
 
     def query_all(self) -> List[Dict[str, Any]]:
-        """Return one row per star (most-recent metrics merged)."""
+        """Return one row per star (most-recent metrics, deduplicated)."""
         con = self._connect()
         rows = con.execute("""
             SELECT s.object_name, s.constellation, s.spectral_type, s.vmag,
                    m.coherence_score, m.e_total, m.e_uv, m.e_vis, m.e_ir,
                    m.timestamp
             FROM stars s
-            LEFT JOIN spectral_metrics m ON s.id = m.star_id
+            LEFT JOIN (
+                SELECT star_id, MAX(timestamp) AS max_ts
+                FROM spectral_metrics
+                GROUP BY star_id
+            ) latest ON latest.star_id = s.id
+            LEFT JOIN spectral_metrics m
+                ON m.star_id = s.id AND m.timestamp = latest.max_ts
             ORDER BY s.constellation, s.vmag
         """).fetchall()
         return [dict(r) for r in rows]
