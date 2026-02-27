@@ -1,144 +1,148 @@
-# 🧲 NMR-Project
+# Spectroscopy & Analysis Projects
 
-This project provides a comprehensive pipeline for parsing, analyzing, and visualizing Nuclear Magnetic Resonance (NMR) spectroscopy data, with a focus on 1H-NMR.  
-It includes data import, Fourier transformation, peak detection, integration, functional group identification, spin-spin coupling analysis, and quantum mechanical simulation of spin systems.
+A comprehensive repository for spectroscopic analysis and data processing, featuring Nuclear Magnetic Resonance (NMR), Stellar Spectroscopy, and related computational tools.
+
+## 📂 Project Structure
+
+### 🧲 [Nuclear Magnetic Resonance (NMR)](./nuclear_magnetic_resonance_spectrospy/)
+Advanced analysis pipeline for NMR spectroscopy data, including:
+- **1D NMR Analysis**: Hydrogen (¹H) and carbon (¹³C) NMR processing
+- **2D NMR Spectroscopy**: Complex multi-dimensional NMR techniques
+- **Peak Assignment**: Functional group identification and J-coupling analysis
+- **Quantum Mechanical Simulation**: Spin system modeling and wavefunction evolution
+- **Data Processing**: FFT, peak detection, integration, and visualization
+
+📍 [See NMR README](./nuclear_magnetic_resonance_spectrospy/README.md)
+
+### ⭐ [Stellar Spectroscopy](./stellar_spectrospy/)
+Zodiac constellation spectral analysis framework with:
+- **SDSS/SIMBAD Data Integration**: Automatic spectrum retrieval from astronomical archives
+- **Spectral Analysis Pipeline**: State estimation, energy models, and tensor analysis
+- **Zodiac Target Catalog**: Complete 12-constellation stellar database
+- **Results Persistence**: SQLite database and CSV output for analysis tracking
+- **Interactive Notebooks**: Phase-by-phase spectral analysis workflows
+
+📍 [See Stellar Spectroscopy README](./stellar_spectrospy/README.md)
+
+### 🤖 [Machine Learning](./machine_learning/)
+Deep learning models for spectroscopy:
+- **Deep Learning Models**: Neural network architectures for spectrum analysis
+- **Denoising Networks**: Physics-informed denoising for spectroscopic data
+- Model checkpoints and training utilities
+
+### ☀️ [Solar Project](./solar_project/)
+Solar irradiance and spectral analysis:
+- Solar irradiance data sampling and processing for future api integration
+- Spectroscopic visualization tools
 
 ---
 
-## ✨ Features
+## 🚀 Quick Start
 
-- 📥 **Data Import & Visualization**  
-  Reads JEOL ASCII FID files and visualizes the raw time-domain signal. **(ASCII reccommended)**
+### Installation
+```bash
+# Clone the repository
+git clone https://github.com/Quintinlf/Spectroscopy.git
+cd Spectroscopy
 
-- 🔄 **Fourier Transform**  
-  Converts the time-domain FID to the frequency domain using FFT, producing the NMR spectrum.
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-- 📈➕ **Peak Detection & Integration**  
-  Detects significant peaks using customizable thresholds and integrates peak areas to estimate relative proton counts.
+# Install dependencies
+pip install -r requirements.txt
+```
 
-- 🧬 **Functional Group Identification**  
-  Maps detected peaks to chemical functional groups based on their chemical shift (δ, ppm) ranges.
-
-- 🔗 **Spin-Spin Coupling (J-Coupling) Analysis**  
-  Detects multiplets, estimates J-coupling constants ($J$), and visualizes multiplet structures with annotated J values.
-
-- ⚛️ **Quantum Mechanical Simulation**  
-  Simulates the NMR Hamiltonian for coupled spin systems, computes eigenstates, and animates wavefunction evolution in a potential.
+### Running Analysis
+- **NMR Analysis**: See [NMR Project README](./nuclear_magnetic_resonance_spectrospy/README.md)
+- **Stellar Spectroscopy**: See [Stellar Spectroscopy README](./stellar_spectrospy/README.md)
 
 ---
 
-## 📁 File Structure
+## 📊 Key Features Across Projects
+
+| Feature | NMR | Stellar | ML |
+|---------|-----|---------|-----|
+| Data Import/Processing | ✅ | ✅ | ✅ |
+| Fourier Analysis | ✅ | ✅ | ✅ |
+| Peak Detection | ✅ | ✅ | ✅ |
+| Visualization | ✅ | ✅ | ✅ |
+| Database Storage | ✅ | ✅ | - |
+| Quantum Simulation | ✅ | - | - |
+| Archive Integration | - | ✅ | - |
+| Deep Learning | - | - | ✅ |
+
+---
+
+## 🛠️ Technology Stack
+
+- **Python 3.7+**
+- **Data Processing**: NumPy, Pandas, SciPy
+- **Visualization**: Matplotlib, Seaborn
+- **Machine Learning**: PyTorch (for deep learning models)
+- **Scientific Computing**: Quantum mechanics simulation, FFT analysis
+- **Database**: SQLite (for stellar spectroscopy results)
+- **Notebooks**: Jupyter
+
+---
+
+## 📝 Repository Contents
 
 ```
 NMR-Project/
+├── nuclear_magnetic_resonance_spectrospy/    # NMR analysis pipeline
+│   ├── nmr_function.py
+│   ├── peak_assignment.py
+│   ├── fall_semester_2025/                   # Advanced NMR techniques
+│   ├── spring_semester_2025/                 # Basic NMR analysis
+│   ├── quantum_mechanics/                    # QM simulations
+│   └── README.md
 │
-├── data/
-│   └── 13_03_11_indst_1H fid.asc        # Raw JEOL FID ASCII data files
+├── stellar_spectrospy/                       # Stellar spectroscopy
+│   ├── analysis_runner.py
+│   ├── zodiac_targets.py
+│   ├── spectral_database.py
+│   ├── unified_signal_engine.py
+│   ├── phase1_spectral_analysis.ipynb
+│   └── README.md
 │
-├── notebooks/
-│   ├── project_1_spring_2025.ipynb      # Main analysis notebook    
-│   ├── testing_functions.ipynb          # Notebook for testing/refactoring functions  
-│   ├── project_2_fall_2025.ipynb        # project presented in fall
+├── machine_learning/                         # Deep learning models
+│   ├── neural_net.py
+│   ├── deep_learning_model.ipynb
+│   └── checkpoints/
 │
-├── nmr/
-│   ├── __init__.py                      # Makes this a Python package  
-│   ├── nmr_functions.py                 # All reusable NMR analysis functions/classes  
-│   └── quantum_sim.py                   # Quantum simulation utilities (optional)  
+├── solar_project/                            # Solar analysis
+│   ├── solar_spec.ipynb
+│   └── data/
 │
-├── outputs/
-│   └── pen.gif                          # Example animation output  
-│
-├── README.md                            # Project overview and usage  
-├── requirements.txt                     # List of dependencies (for pip install -r)  
-└── .gitignore                           # Ignore data, outputs, etc. as needed  
+└── README.md                                 # This file
 ```
 
 ---
 
-## 🚀 Usage
+## 📚 Additional Resources
 
-1. Open `parsing_nmr_data.ipynb` in Jupyter, VS Code, or Colab (**Colab recommended for beginners**).
-2. Edit the file path in the data import cell to point to your JEOL FID ASCII file.
-3. Run all cells **sequentially** to:
-   - 📥 Import and plot raw data
-   - 🔄 Perform Fourier transform and plot the spectrum
-   - 📈➕ Detect and integrate peaks
-   - 🧬 Identify functional groups
-   - 🔗 Analyze spin-spin coupling and visualize multiplets
-   - ⚛️ Simulate and animate quantum wavefunction evolution
+- **NMR Theory**: See nuclear_magnetic_resonance_spectrospy/ for technical details
+- **Stellar Data**: Check stellar_spectrospy/ for constellation targets and analysis methods
+- **ML Models**: Review machine_learning/ for model architecture details
 
 ---
 
-## 🛠️ Requirements
+## 🤝 Contributing
 
-- Python 3.7+
-- numpy
-- pandas
-- matplotlib
-- seaborn
-- scipy
-- pillow (for GIF animation)
-
-**Install dependencies with:**  
-```sh
-pip install numpy pandas matplotlib seaborn scipy pillow
-```
+Contributions are welcome! Please ensure that:
+- Code follows the existing style conventions
+- New features include relevant notebook demonstrations
+- Analysis results are documented
 
 ---
 
-## 🧩 Key Functions & Notebooks
+## 📄 License
 
-- **Data Import & FFT:**  
-  See the initial code cells in `parsing_nmr_data.ipynb`.
-
-- **Peak Detection & Integration:**  
-  Uses `scipy.signal.find_peaks` and `scipy.integrate.simpson`.
-
-- **Functional Group Mapping:**  
-  See `identify_functional_groups` and `auto_zoom_functional_groups_with_integration`.
-
-- **Spin-Spin Coupling:**  
-  See `detect_and_plot_multiplet` for multiplet and J-coupling analysis.
-
-- **Quantum Simulation:**  
-  See the final section for Hamiltonian construction, eigenstate computation, and animation.
+See [LICENSE](./LICENSE) file for details.
 
 ---
 
-## 🖼️ Example Output
+## ✉️ Contact
 
-- **NMR Spectrum:**  
-  Plots of the frequency-domain spectrum with detected peaks and functional group annotations.
-
-- **Integration Table:**  
-  Printed output of relative proton counts for each peak.
-
-- **Multiplet Visualization:**  
-  Zoomed-in plots of multiplets with J-coupling constants annotated.
-
-- **Quantum Animation:**  
-  Animated GIF (`pen.gif`) showing the time evolution of a quantum wavefunction in a potential.
-
----
-
-## 📝 Notes
-
-- The code is modular and can be adapted for other NMR datasets or extended for more advanced analyses.
-- For best results, use high-quality FID data and adjust thresholds as needed for your instrument and sample.
-
----
-
-## 📜 License
-
-This project is for educational and research purposes.
-
----
-
-## 👤 Author
-
-Created by Quintinlf
-For questions, open an issue or contact via GitHub.
-
----
-
-**See `parsing_nmr_data.ipynb` for full code and documentation.**
+For questions or collaboration inquiries, please open an issue or reach out through the repository.
