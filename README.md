@@ -30,6 +30,8 @@ Deep learning models for spectroscopy:
 - **Denoising Networks**: Physics-informed denoising for spectroscopic data
 - Model checkpoints and training utilities
 
+📍 [See Machine Learning README](./machine_learning/README.md)
+
 ### ☀️ [Solar Project](./solar_project/)
 Solar irradiance and spectral analysis:
 - Solar irradiance data sampling and processing for future api integration
@@ -56,6 +58,7 @@ pip install -r requirements.txt
 ### Running Analysis
 - **NMR Analysis**: See [NMR Project README](./nuclear_magnetic_resonance_spectrospy/README.md)
 - **Stellar Spectroscopy**: See [Stellar Spectroscopy README](./stellar_spectrospy/README.md)
+- **Machine Learning**: See [Machine Learning README](./machine_learning/README.md)
 
 ---
 
