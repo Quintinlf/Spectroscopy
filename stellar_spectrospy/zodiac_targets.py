@@ -103,6 +103,8 @@ ZODIAC_STARS: Dict[str, List[StarRecord]] = {
                    "Northern Donkey"),
         StarRecord("Acubens",             "α Cnc", "Cancer", 134.622, 11.858, "Am",     4.25, 174,
                    "Metallic-line A-type binary"),
+        StarRecord("Sirius",              "α CMa", "Cancer", 101.287, -16.716, "A1V",   -1.46, 8.6,
+                   "Brightest star in the sky; white dwarf binary system"),
     ],
 
     # ------------------------------------------------------------------
