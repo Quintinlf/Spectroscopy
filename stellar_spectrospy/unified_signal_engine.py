@@ -985,7 +985,8 @@ class SpectralStateEstimator:
     ) -> plt.Figure:
         """
         Single-panel calibrated stellar spectrum in wavelength space with
-        canonical spectral line markers.  (Stellar mode only.)
+        canonical spectral line markers and detected-peak chemical labels.
+        (Stellar mode only.)
         """
         if self._mode_resolved != "stellar":
             raise RuntimeError("This plot is for stellar mode spectra only.")
@@ -995,7 +996,15 @@ class SpectralStateEstimator:
                 if self._processed is not None
                 else np.asarray(self._raw_signal, dtype=float))
 
-        fig, ax = plt.subplots(figsize=(14, 5))
+        # ── Ensure chemical identification is available ───────────────────────
+        if not hasattr(self, '_features') or self._features is None:
+            self.identify_features()
+        features = self._features or []
+
+        # Build figure with wide enough right margin for detection table
+        fig, ax = plt.subplots(figsize=(15, 5.5))
+        fig.subplots_adjust(right=0.78)
+
         ax.plot(self._raw_x, flux, linewidth=0.8, color="navy", alpha=0.9, label="Flux")
 
         if annotate_lines:
@@ -1003,7 +1012,8 @@ class SpectralStateEstimator:
                 "Hα": 6562.8, "Hβ": 4861.3, "Hγ": 4340.5,
                 "Ca K": 3933.7, "Ca H": 3968.5,
                 "Mg I": 5175.0, "Na D": 5892.5,
-                "TiO": 7054.0,
+                "He I": 5876.0, "Fe I": 5270.0,
+                "TiO": 7054.0, "Ca IRT": 8542.0,
             }
             y_top = np.nanmax(flux)
             for lname, lwl in LINES.items():
@@ -1019,15 +1029,68 @@ class SpectralStateEstimator:
             peak_amp = self._fft_mag[self._peaks]
             # Normalise amplitudes to flux scale
             scale = np.nanmax(flux) / (peak_amp.max() + 1e-30)
-            ax.scatter(peak_wl, peak_amp * scale, marker="v", s=50,
+            peak_flux_y = peak_amp * scale
+            ax.scatter(peak_wl, peak_flux_y, marker="v", s=60,
                        color="crimson", zorder=5, label="Detected Peaks")
+
+            # ── Annotate each detected peak with the identified element ───────
+            # Build a feature lookup by index for fast access
+            feat_by_idx = {f["index"]: f for f in features}
+            label_colors = plt.cm.Set1(np.linspace(0, 0.9, max(len(self._peaks), 1)))
+
+            used_labels: List[str] = []
+            for k, (pidx, wl_pk, y_pk) in enumerate(
+                zip(self._peaks, peak_wl, peak_flux_y)
+            ):
+                feat = feat_by_idx.get(pidx)
+                if feat:
+                    elem_name = feat["nearest_line"]
+                    delta_aa  = feat["delta_angstrom"]
+                    # Offset labels alternately up/down to avoid overlap
+                    y_offset  = y_pk * (1.08 if k % 2 == 0 else 1.18)
+                    ax.annotate(
+                        f"{elem_name}\n({wl_pk:.0f} Å)",
+                        xy=(wl_pk, y_pk),
+                        xytext=(wl_pk, y_offset),
+                        arrowprops=dict(arrowstyle="-", color=label_colors[k],
+                                        lw=0.8, alpha=0.8),
+                        fontsize=7.5, ha="center", va="bottom",
+                        color=label_colors[k], fontweight="bold",
+                        bbox=dict(boxstyle="round,pad=0.15", fc="white",
+                                  ec=label_colors[k], alpha=0.85, linewidth=0.8),
+                    )
+                    used_labels.append(
+                        (elem_name, wl_pk, delta_aa, feat["line_wavelength"])
+                    )
+
+            # ── Chemical detection table on the right ─────────────────────────
+            if used_labels:
+                y_start = 0.97
+                line_h  = 0.14
+                fig.text(0.795, y_start, "Detected Species", fontsize=8.5,
+                         fontweight="bold", transform=fig.transFigure,
+                         color="dimgray", va="top")
+                fig.text(0.795, y_start - line_h * 0.8,
+                         f"{'Element':9s}  {'Obs Å':>7s}  {'Ref Å':>7s}  {'Δ Å':>5s}",
+                         fontsize=7, transform=fig.transFigure, color="dimgray",
+                         va="top", family="monospace")
+                fig.add_artist(plt.Line2D(
+                    [0.793, 0.995], [y_start - line_h * 1.5, y_start - line_h * 1.5],
+                    transform=fig.transFigure, color="lightgray", linewidth=0.8
+                ))
+                for row_i, (ename, obs_wl, delta, ref_wl) in enumerate(used_labels):
+                    y_row = y_start - line_h * (row_i + 2.5)
+                    color = label_colors[row_i % len(label_colors)]
+                    fig.text(0.795, y_row,
+                             f"{ename:9s}  {obs_wl:7.1f}  {ref_wl:7.1f}  {delta:5.1f}",
+                             fontsize=7, transform=fig.transFigure,
+                             color=color, va="top", family="monospace")
 
         ax.set_xlabel("Wavelength (Å)", fontsize=12)
         ax.set_ylabel("Flux (erg s⁻¹ cm⁻² Å⁻¹)", fontsize=12)
         ax.set_title(f"Stellar Spectrum: {name}", fontsize=13, fontweight="bold")
         ax.legend(fontsize=9)
         ax.grid(True, alpha=0.25)
-        plt.tight_layout()
         if show:
             plt.show()
         return fig
