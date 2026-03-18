@@ -118,11 +118,112 @@ class SpectralDatabase:
 
             CREATE INDEX IF NOT EXISTS idx_stars_constellation
                 ON stars (constellation);
+
+            CREATE TABLE IF NOT EXISTS objects (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                object_name     TEXT    NOT NULL UNIQUE,
+                object_type     TEXT    NOT NULL,
+                group_name      TEXT,
+                spectral_type   TEXT,
+                ra_deg          REAL,
+                dec_deg         REAL,
+                vmag            REAL,
+                dist_ly         REAL,
+                metadata_json   TEXT,
+                timestamp       TEXT    NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS object_spectra (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                object_id         INTEGER NOT NULL REFERENCES objects(id),
+                observation_date  TEXT    NOT NULL,
+                query_timestamp   TEXT    NOT NULL,
+                source            TEXT    NOT NULL,
+                spectrum_blob     BLOB,
+                uncertainty_blob  BLOB,
+                metadata_json     TEXT,
+                timestamp         TEXT    NOT NULL,
+                UNIQUE(object_id, observation_date, source)
+            );
+
+            CREATE TABLE IF NOT EXISTS object_metrics (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                object_id          INTEGER NOT NULL REFERENCES objects(id),
+                spectrum_id        INTEGER REFERENCES object_spectra(id),
+                comparison_spectrum_id INTEGER REFERENCES object_spectra(id),
+                peak_frequencies   TEXT,
+                peak_amplitudes    TEXT,
+                coherence_score    REAL,
+                e_uv               REAL,
+                e_vis              REAL,
+                e_ir               REAL,
+                e_total            REAL,
+                energy_per_peak    TEXT,
+                harmonic_families  TEXT,
+                spectral_difference_rms REAL,
+                detected_shift_angstrom REAL,
+                analysis_notes     TEXT,
+                source             TEXT,
+                observation_date   TEXT,
+                timestamp          TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_objects_type
+                ON objects (object_type);
+            CREATE INDEX IF NOT EXISTS idx_object_spectra_lookup
+                ON object_spectra (object_id, observation_date);
+            CREATE INDEX IF NOT EXISTS idx_object_metrics_object
+                ON object_metrics (object_id, timestamp);
+        """)
+        con.commit()
+        self._migrate_legacy_to_unified()
+
+    def _migrate_legacy_to_unified(self) -> None:
+        """Backfill legacy star tables into unified object tables."""
+
+        con = self._connect()
+        con.execute("""
+            INSERT OR IGNORE INTO objects
+                (object_name, object_type, group_name, spectral_type,
+                 ra_deg, dec_deg, vmag, dist_ly, metadata_json, timestamp)
+            SELECT object_name, 'star', constellation, spectral_type,
+                   ra_deg, dec_deg, vmag, dist_ly, NULL, timestamp
+            FROM stars
+        """)
+        con.execute("""
+            INSERT INTO object_metrics
+                (object_id, spectrum_id, comparison_spectrum_id,
+                 peak_frequencies, peak_amplitudes, coherence_score,
+                 e_uv, e_vis, e_ir, e_total,
+                 energy_per_peak, harmonic_families,
+                 spectral_difference_rms, detected_shift_angstrom,
+                 analysis_notes, source, observation_date, timestamp)
+            SELECT o.id, NULL, NULL,
+                   m.peak_frequencies, m.peak_amplitudes, m.coherence_score,
+                   m.e_uv, m.e_vis, m.e_ir, m.e_total,
+                   m.energy_per_peak, m.harmonic_families,
+                   NULL, NULL,
+                   m.analysis_notes, 'legacy_stars', substr(m.timestamp, 1, 10), m.timestamp
+            FROM spectral_metrics m
+            JOIN stars s ON s.id = m.star_id
+            JOIN objects o ON o.object_name = s.object_name
+            WHERE NOT EXISTS (
+                SELECT 1 FROM object_metrics om
+                WHERE om.object_id = o.id
+                  AND om.timestamp = m.timestamp
+                  AND om.source = 'legacy_stars'
+            )
         """)
         con.commit()
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
+
+    @staticmethod
+    def _json(value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        return json.dumps(value)
 
     # ------------------------------------------------------------------
     # Public API — writing
@@ -161,7 +262,19 @@ class SpectralDatabase:
         con.commit()
         # Retrieve the id regardless of insert or update
         cur2 = con.execute("SELECT id FROM stars WHERE object_name = ?", (star.name,))
-        return cur2.fetchone()["id"]
+        row_id = cur2.fetchone()["id"]
+
+        self.store_object(
+            object_name=star.name,
+            object_type=getattr(star, "object_type", "star") or "star",
+            group_name=getattr(star, "constellation", None),
+            spectral_type=getattr(star, "spectral_type", None),
+            ra_deg=getattr(star, "ra_deg", None),
+            dec_deg=getattr(star, "dec_deg", None),
+            vmag=getattr(star, "vmag", None),
+            dist_ly=getattr(star, "dist_ly", None),
+        )
+        return row_id
 
     def store_metrics(
         self,
@@ -215,6 +328,182 @@ class SpectralDatabase:
             self._now(),
         ))
         con.commit()
+
+        object_type = metrics.get("object_type", "star")
+        self.store_object_metrics(
+            object_name=object_name,
+            object_type=object_type,
+            metrics=metrics,
+            source=metrics.get("source", "analysis_runner"),
+            observation_date=metrics.get("observation_date"),
+            notes=notes,
+        )
+
+    def store_object(
+        self,
+        object_name: str,
+        object_type: str,
+        group_name: Optional[str] = None,
+        spectral_type: Optional[str] = None,
+        ra_deg: Optional[float] = None,
+        dec_deg: Optional[float] = None,
+        vmag: Optional[float] = None,
+        dist_ly: Optional[float] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """Insert or update an object in the unified table."""
+
+        con = self._connect()
+        con.execute("""
+            INSERT INTO objects
+                (object_name, object_type, group_name, spectral_type,
+                 ra_deg, dec_deg, vmag, dist_ly, metadata_json, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(object_name) DO UPDATE SET
+                object_type   = excluded.object_type,
+                group_name    = excluded.group_name,
+                spectral_type = excluded.spectral_type,
+                ra_deg        = excluded.ra_deg,
+                dec_deg       = excluded.dec_deg,
+                vmag          = excluded.vmag,
+                dist_ly       = excluded.dist_ly,
+                metadata_json = excluded.metadata_json,
+                timestamp     = excluded.timestamp
+        """, (
+            object_name,
+            object_type,
+            group_name,
+            spectral_type,
+            ra_deg,
+            dec_deg,
+            vmag,
+            dist_ly,
+            self._json(metadata),
+            self._now(),
+        ))
+        con.commit()
+        row = con.execute("SELECT id FROM objects WHERE object_name = ?", (object_name,)).fetchone()
+        return int(row["id"])
+
+    def store_object_spectrum(
+        self,
+        object_name: str,
+        object_type: str,
+        observation_date: Optional[str],
+        source: str,
+        spectrum_blob: Optional[bytes],
+        uncertainty_blob: Optional[bytes] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        query_timestamp: Optional[str] = None,
+    ) -> int:
+        """Store one spectrum blob in unified table and return spectrum id."""
+
+        object_id = self.store_object(object_name=object_name, object_type=object_type)
+        obs_date = observation_date or self._now()[:10]
+        q_ts = query_timestamp or self._now()
+        con = self._connect()
+        con.execute("""
+            INSERT INTO object_spectra
+                (object_id, observation_date, query_timestamp, source,
+                 spectrum_blob, uncertainty_blob, metadata_json, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(object_id, observation_date, source) DO UPDATE SET
+                query_timestamp  = excluded.query_timestamp,
+                spectrum_blob    = excluded.spectrum_blob,
+                uncertainty_blob = excluded.uncertainty_blob,
+                metadata_json    = excluded.metadata_json,
+                timestamp        = excluded.timestamp
+        """, (
+            object_id,
+            obs_date,
+            q_ts,
+            source,
+            sqlite3.Binary(spectrum_blob) if spectrum_blob is not None else None,
+            sqlite3.Binary(uncertainty_blob) if uncertainty_blob is not None else None,
+            self._json(metadata),
+            self._now(),
+        ))
+        con.commit()
+        row = con.execute(
+            "SELECT id FROM object_spectra WHERE object_id = ? AND observation_date = ? AND source = ?",
+            (object_id, obs_date, source),
+        ).fetchone()
+        return int(row["id"])
+
+    def store_object_metrics(
+        self,
+        object_name: str,
+        object_type: str,
+        metrics: Dict[str, Any],
+        source: str,
+        observation_date: Optional[str] = None,
+        notes: str = "",
+        spectrum_id: Optional[int] = None,
+        comparison_spectrum_id: Optional[int] = None,
+    ) -> int:
+        """Store metrics for stars, planets, or other object types."""
+
+        object_id = self.store_object(object_name=object_name, object_type=object_type)
+        con = self._connect()
+        con.execute("""
+            INSERT INTO object_metrics
+                (object_id, spectrum_id, comparison_spectrum_id,
+                 peak_frequencies, peak_amplitudes, coherence_score,
+                 e_uv, e_vis, e_ir, e_total,
+                 energy_per_peak, harmonic_families,
+                 spectral_difference_rms, detected_shift_angstrom,
+                 analysis_notes, source, observation_date, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            object_id,
+            spectrum_id,
+            comparison_spectrum_id,
+            self._json(metrics.get("peak_frequencies")),
+            self._json(metrics.get("peak_amplitudes")),
+            metrics.get("coherence_score"),
+            metrics.get("e_uv"),
+            metrics.get("e_vis"),
+            metrics.get("e_ir"),
+            metrics.get("e_total"),
+            self._json(metrics.get("energy_per_peak")),
+            self._json(metrics.get("harmonic_families")),
+            metrics.get("spectral_difference_rms"),
+            metrics.get("detected_shift_angstrom"),
+            notes,
+            source,
+            observation_date,
+            self._now(),
+        ))
+        con.commit()
+        row = con.execute("SELECT last_insert_rowid() AS id").fetchone()
+        return int(row["id"])
+
+    def query_all_objects(self, object_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Return latest unified metrics per object with object_type."""
+
+        con = self._connect()
+        args: List[Any] = []
+        where = ""
+        if object_type:
+            where = "WHERE LOWER(o.object_type) = LOWER(?)"
+            args.append(object_type)
+
+        rows = con.execute(f"""
+            SELECT o.object_name, o.object_type, o.group_name, o.spectral_type,
+                   m.coherence_score, m.e_total, m.e_uv, m.e_vis, m.e_ir,
+                   m.source, m.observation_date, m.timestamp
+            FROM objects o
+            LEFT JOIN (
+                SELECT object_id, MAX(timestamp) AS max_ts
+                FROM object_metrics
+                GROUP BY object_id
+            ) latest ON latest.object_id = o.id
+            LEFT JOIN object_metrics m
+                ON m.object_id = o.id AND m.timestamp = latest.max_ts
+            {where}
+            ORDER BY o.object_type, o.object_name
+        """, args).fetchall()
+        return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------
     # Public API — reading
@@ -335,11 +624,17 @@ class SpectralDatabase:
         n_const = con.execute(
             "SELECT COUNT(DISTINCT constellation) FROM stars"
         ).fetchone()[0]
+        n_objects = con.execute("SELECT COUNT(*) FROM objects").fetchone()[0]
+        n_object_metrics = con.execute("SELECT COUNT(*) FROM object_metrics").fetchone()[0]
+        n_object_spectra = con.execute("SELECT COUNT(*) FROM object_spectra").fetchone()[0]
         return (
             f"SpectralDatabase  path={self.db_path}\n"
             f"  Stars stored    : {n_stars}\n"
             f"  Metric records  : {n_metrics}\n"
-            f"  Constellations  : {n_const}"
+            f"  Constellations  : {n_const}\n"
+            f"  Unified objects : {n_objects}\n"
+            f"  Unified spectra : {n_object_spectra}\n"
+            f"  Unified metrics : {n_object_metrics}"
         )
 
     def close(self) -> None:

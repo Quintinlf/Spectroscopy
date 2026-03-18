@@ -1,0 +1,4 @@
+date_a,date_b,spectral_difference_rms,median_flux_delta,detected_shift_angstrom,harmonic_delta_l2
+2026-03-01,2026-03-01,0.0,0.0,0.0,0.0
+2026-03-01,2026-03-10,0.0,0.0,0.0,0.0
+2026-03-10,2026-03-10,0.0,0.0,0.0,0.0

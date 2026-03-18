@@ -411,6 +411,19 @@ class ZodiacRunner:
             return pd.DataFrame(data)
         return data
 
+    def summary_dataframe_unified(
+        self,
+        object_type: Optional[str] = None,
+    ) -> "pd.DataFrame | List[Dict]":
+        """Return unified object summary (stars + synced planetary records)."""
+
+        data = self.db.query_all_objects(object_type=object_type)
+        if _PANDAS_OK:
+            import pandas as pd
+
+            return pd.DataFrame(data)
+        return data
+
     def export_csv(self, path: Union[str, Path] = "spectral_results.csv") -> Path:
         """Export all results to CSV."""
         return self.db.export_csv(path)
