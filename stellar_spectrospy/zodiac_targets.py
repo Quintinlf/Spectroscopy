@@ -65,6 +65,16 @@ class StarRecord:
 
 ZODIAC_STARS: Dict[str, List[StarRecord]] = {
 
+    # ======================================================================
+    # SOLAR SYSTEM — Reference spectral source
+    # ======================================================================
+
+    # ------------------------------------------------------------------
+    "Solar System": [
+        StarRecord("Sun",       "☉",     "Solar System",    0.0,    0.0, "G2V",  -26.74,  0.0000158,
+                   "Primary source of solar energy; reference G2V spectral type"),
+    ],
+
     # ------------------------------------------------------------------
     "Aries": [
         StarRecord("Hamal",     "α Ari", "Aries",  31.793, 23.462, "K2III",   2.00,  66,

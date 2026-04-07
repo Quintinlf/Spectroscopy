@@ -1,0 +1,2 @@
+raw_rms,enh_rms,rms_delta_db,snr_proxy_raw_db,snr_proxy_enh_db,snr_proxy_delta_db,clip_ratio,non_finite_samples
+0.0738251656293869,0.06339525431394577,-1.3229536322465354,-0.08947987500440625,-0.09157786767010848,-0.0020979926657022224,0.0,0

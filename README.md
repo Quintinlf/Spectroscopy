@@ -37,6 +37,15 @@ Solar irradiance and spectral analysis:
 - Solar irradiance data sampling and processing for future api integration
 - Spectroscopic visualization tools
 
+### 🎙️ [Audio Visuals](./audio_visuals/)
+Podcast and speech-oriented signal enhancement workspace:
+- **WAV-First Audio Pipeline**: End-to-end enhancement notebook for long-form audio
+- **Spectral Diagnostics**: Waveform, FFT, spectrogram, and band-energy inspection
+- **Classical DSP + Optional ML**: High-pass and spectral subtraction with denoiser hook
+- **Validation Utilities**: Segment sweeps, threshold checks, and exportable metrics
+
+📍 [See Audio Visuals README](./audio_visuals/README.md)
+
 ---
 
 ## 🚀 Quick Start
@@ -59,21 +68,22 @@ pip install -r requirements.txt
 - **NMR Analysis**: See [NMR Project README](./nuclear_magnetic_resonance_spectrospy/README.md)
 - **Stellar Spectroscopy**: See [Stellar Spectroscopy README](./stellar_spectrospy/README.md)
 - **Machine Learning**: See [Machine Learning README](./machine_learning/README.md)
+- **Audio Visuals**: See [Audio Visuals README](./audio_visuals/README.md)
 
 ---
 
 ## 📊 Key Features Across Projects
 
-| Feature | NMR | Stellar | ML |
-|---------|-----|---------|-----|
-| Data Import/Processing | ✅ | ✅ | ✅ |
-| Fourier Analysis | ✅ | ✅ | ✅ |
-| Peak Detection | ✅ | ✅ | ✅ |
-| Visualization | ✅ | ✅ | ✅ |
-| Database Storage | ✅ | ✅ | - |
-| Quantum Simulation | ✅ | - | - |
-| Archive Integration | - | ✅ | - |
-| Deep Learning | - | - | ✅ |
+| Feature | NMR | Stellar | ML | Audio Visuals |
+|---------|-----|---------|-----|---------------|
+| Data Import/Processing | ✅ | ✅ | ✅ | ✅ |
+| Fourier Analysis | ✅ | ✅ | ✅ | ✅ |
+| Peak Detection | ✅ | ✅ | ✅ | ✅ |
+| Visualization | ✅ | ✅ | ✅ | ✅ |
+| Database Storage | ✅ | ✅ | - | - |
+| Quantum Simulation | ✅ | - | - | - |
+| Archive Integration | - | ✅ | - | - |
+| Deep Learning | - | - | ✅ | ✅ |
 
 ---
 
@@ -82,6 +92,7 @@ pip install -r requirements.txt
 - **Python 3.7+**
 - **Data Processing**: NumPy, Pandas, SciPy
 - **Visualization**: Matplotlib, Seaborn
+- **Audio Processing**: Librosa, SoundFile
 - **Machine Learning**: PyTorch (for deep learning models)
 - **Scientific Computing**: Quantum mechanics simulation, FFT analysis
 - **Database**: SQLite (for stellar spectroscopy results)
@@ -118,6 +129,12 @@ NMR-Project/
 │   ├── solar_spec.ipynb
 │   └── data/
 │
+├── audio_visuals/                            # Audio enhancement signal lab
+│   ├── audio_enhancement_pipeline.ipynb
+│   ├── data/
+│   ├── outputs/
+│   └── README.md
+│
 └── README.md                                 # This file
 ```
 
@@ -128,6 +145,7 @@ NMR-Project/
 - **NMR Theory**: See nuclear_magnetic_resonance_spectrospy/ for technical details
 - **Stellar Data**: Check stellar_spectrospy/ for constellation targets and analysis methods
 - **ML Models**: Review machine_learning/ for model architecture details
+- **Audio Enhancement**: Explore audio_visuals/ for podcast processing workflows
 
 ---
 
