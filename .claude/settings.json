@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where python *)",
+      "Bash(where py *)",
+      "Bash(py -0)",
+      "Bash(/c/Python314/python.exe -c ' *)",
+      "Bash(/c/Python314/python.exe -m py_compile \"C:\\\\Users\\\\Windows User\\\\My_folder\\\\mcp_server\\\\server.py\" \"C:\\\\Users\\\\Windows User\\\\My_folder\\\\mcp_server\\\\tools\\\\register.py\")",
+      "Bash(claude mcp *)",
+      "PowerShell(claude mcp add eos --scope user -- \"C:\\\\Python314\\\\python.exe\" \"C:\\\\Users\\\\Windows User\\\\My_folder\\\\mcp_server\\\\server.py\")",
+      "Bash(where.exe claude *)",
+      "Bash(npm root *)",
+      "Bash(where.exe npm *)",
+      "Bash(where.exe node *)",
+      "Read(//c/Users/Windows User/**)",
+      "Bash(ls \"C:\\\\Users\\\\Windows User\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\" 2>/dev/null | grep -i claude *)",
+      "Read(//c/Users/Windows User/AppData/Roaming/npm/node_modules/**)",
+      "Read(//c/Users/Windows User/AppData/Roaming/npm/**)",
+      "Read(//c/Program Files/**)",
+      "Bash(npm ls *)",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('nuclear_magnetic_resonance_spectrospy/fall_semester_2025/chem_tools/credentials.json'\\)\\); print\\(list\\(d.keys\\(\\)\\)\\); print\\({k:\\(list\\(v.keys\\(\\)\\) if isinstance\\(v,dict\\) else v\\) for k,v in d.items\\(\\)}\\)\")",
+      "Bash(gh repo *)",
+      "Bash(curl -s \"https://api.github.com/repos/Quintinlf/Spectroscopy\")",
+      "Bash(\"/c/Users/Windows User/NMR-Project/.venv/Scripts/python\" -m pip install -r requirements.txt --quiet)",
+      "Bash(\"/c/Users/Windows User/NMR-Project/.venv/Scripts/python\" -c \"import config, video_optimizer, media_watcher, main; print\\('all modules import cleanly'\\)\")",
+      "Bash(\"/c/Users/Windows User/NMR-Project/.venv/Scripts/python\" main.py)",
+      "Bash(echo \"exit code: $?\")",
+      "Bash(mkdir -p incoming_media)",
+      "Bash(printf 'not a real video, just test bytes')",
+      "Bash('/c/Users/Windows User/NMR-Project/.venv/Scripts/python' -c ' *)",
+      "Bash(rm -f incoming_media/test_clip.mp4)",
+      "Bash(rmdir incoming_media)"
+    ]
+  }
+}

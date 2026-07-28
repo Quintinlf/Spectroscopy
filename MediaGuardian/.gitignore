@@ -1,0 +1,11 @@
+incoming_media/
+optimized_media/
+thumbnails/
+state/
+__pycache__/
+.ruff_cache/
+*.pyc
+*.log
+media_guardian.log*
+rcs_failure.txt
+*.mp4
